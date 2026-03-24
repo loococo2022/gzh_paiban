@@ -604,8 +604,8 @@ function parseMarkdown(markdown) {
 }
 
 function renderInline(text, theme) {
-  let output = escapeHtml(text);
   const codeTokens = [];
+  let output = text;
 
   output = output.replace(/`([^`]+)`/g, (_, codeText) => {
     const token = `%%INLINECODE${codeTokens.length}%%`;
@@ -623,6 +623,8 @@ function renderInline(text, theme) {
     );
     return token;
   });
+
+  output = escapeHtml(output);
 
   output = output.replace(
     /\[([^\]]+)\]\(([^)]+)\)/g,
@@ -1146,6 +1148,10 @@ function schedulePreviewScrollSync() {
 }
 
 function scheduleScrollSyncRefresh(markdown, blocks) {
+  scheduleScrollSyncRefreshWithMode(markdown, blocks, false);
+}
+
+function scheduleScrollSyncRefreshWithMode(markdown, blocks, shouldSyncPosition) {
   if (scrollSync.measureFrame) {
     cancelAnimationFrame(scrollSync.measureFrame);
   }
@@ -1153,7 +1159,9 @@ function scheduleScrollSyncRefresh(markdown, blocks) {
   scrollSync.measureFrame = requestAnimationFrame(() => {
     scrollSync.measureFrame = 0;
     updateScrollSyncMap(blocks, markdown);
-    syncPreviewScrollToMarkdown();
+    if (shouldSyncPosition) {
+      syncPreviewScrollToMarkdown();
+    }
   });
 }
 
@@ -1183,9 +1191,11 @@ function renderPreview() {
   const theme = getTheme();
   const blocks = parseMarkdown(markdown);
   const article = renderArticle(blocks, theme, state);
+  const previousPreviewScrollTop = elements.previewContent.scrollTop;
 
   elements.previewContent.style.background = theme.palette.page;
   elements.previewContent.innerHTML = article.html;
+  elements.previewContent.scrollTop = previousPreviewScrollTop;
   elements.htmlOutput.textContent = article.html;
   elements.activeTemplateName.textContent = theme.name;
   elements.activeTemplateNote.textContent = theme.note;
@@ -1348,7 +1358,7 @@ function bindEvents() {
   elements.copyHtml.addEventListener("click", copyHtmlSource);
   elements.downloadHtml.addEventListener("click", downloadHtml);
   window.addEventListener("resize", () => {
-    scheduleScrollSyncRefresh(getActiveMarkdown(), state.renderedBlocks);
+    scheduleScrollSyncRefreshWithMode(getActiveMarkdown(), state.renderedBlocks, true);
   });
 }
 
