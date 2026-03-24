@@ -326,7 +326,8 @@ const state = {
   themeId: THEMES[0].id,
   fontSize: 16,
   lineHeight: 1.9,
-  contentPadding: 24
+  contentPadding: 24,
+  renderedBlocks: []
 };
 
 const elements = {
@@ -350,6 +351,18 @@ const elements = {
   copyHtml: document.getElementById("copy-html"),
   downloadHtml: document.getElementById("download-html")
 };
+
+const scrollSync = {
+  mirror: null,
+  blockMap: [],
+  measureFrame: 0,
+  syncFrame: 0
+};
+
+function getActiveMarkdown() {
+  const rawMarkdown = elements.markdownInput.value;
+  return rawMarkdown.trim() ? rawMarkdown : DEFAULT_MARKDOWN;
+}
 
 function escapeHtml(value) {
   return value
@@ -430,6 +443,13 @@ function parseMarkdown(markdown) {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const blocks = [];
   let index = 0;
+  const addBlock = (block, startLine, endLine) => {
+    blocks.push({
+      ...block,
+      startLine,
+      endLine
+    });
+  };
 
   while (index < lines.length) {
     const line = lines[index];
@@ -441,6 +461,7 @@ function parseMarkdown(markdown) {
     }
 
     if (/^```/.test(trimmed)) {
+      const startLine = index;
       const language = trimmed.slice(3).trim();
       const buffer = [];
       index += 1;
@@ -448,55 +469,70 @@ function parseMarkdown(markdown) {
         buffer.push(lines[index]);
         index += 1;
       }
+      const endLine = index < lines.length ? index : lines.length - 1;
       if (index < lines.length) {
         index += 1;
       }
-      blocks.push({ type: "code", language, content: buffer.join("\n") });
+      addBlock({ type: "code", language, content: buffer.join("\n") }, startLine, endLine);
       continue;
     }
 
     if (/^#{1,6}\s/.test(trimmed)) {
       const match = trimmed.match(/^(#{1,6})\s+(.*)$/);
-      blocks.push({
-        type: "heading",
-        level: match[1].length,
-        text: match[2].trim()
-      });
+      addBlock(
+        {
+          type: "heading",
+          level: match[1].length,
+          text: match[2].trim()
+        },
+        index,
+        index
+      );
       index += 1;
       continue;
     }
 
     if (/^([-*_]){3,}$/.test(trimmed)) {
-      blocks.push({ type: "hr" });
+      addBlock({ type: "hr" }, index, index);
       index += 1;
       continue;
     }
 
     if (/^>\s?/.test(trimmed)) {
+      const startLine = index;
       const quoteLines = [];
       while (index < lines.length && /^>\s?/.test(lines[index].trim())) {
         quoteLines.push(lines[index].replace(/^>\s?/, "").trim());
         index += 1;
       }
-      blocks.push({
-        type: "blockquote",
-        text: quoteLines.join("\n")
-      });
+      addBlock(
+        {
+          type: "blockquote",
+          text: quoteLines.join("\n")
+        },
+        startLine,
+        index - 1
+      );
       continue;
     }
 
     if (/^!\[[^\]]*\]\(([^)]+)\)\s*$/.test(trimmed)) {
       const match = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
-      blocks.push({
-        type: "image",
-        alt: match[1].trim(),
-        url: match[2].trim()
-      });
+      addBlock(
+        {
+          type: "image",
+          alt: match[1].trim(),
+          url: match[2].trim()
+        },
+        index,
+        index
+      );
       index += 1;
       continue;
     }
 
     if (trimmed.includes("|") && isTableDivider(lines[index + 1] || "")) {
+      const startLine = index;
       const headers = splitTableRow(lines[index]);
       const rows = [];
       index += 2;
@@ -506,15 +542,20 @@ function parseMarkdown(markdown) {
         index += 1;
       }
 
-      blocks.push({
-        type: "table",
-        headers,
-        rows
-      });
+      addBlock(
+        {
+          type: "table",
+          headers,
+          rows
+        },
+        startLine,
+        index - 1
+      );
       continue;
     }
 
     if (isListLine(line)) {
+      const startLine = index;
       const ordered = /^\s*\d+\.\s+/.test(line);
       const items = [];
       while (index < lines.length && isListLine(lines[index])) {
@@ -522,13 +563,18 @@ function parseMarkdown(markdown) {
         items.push(current.replace(/^\s*([-*+]|\d+\.)\s+/, "").trim());
         index += 1;
       }
-      blocks.push({
-        type: ordered ? "orderedList" : "unorderedList",
-        items
-      });
+      addBlock(
+        {
+          type: ordered ? "orderedList" : "unorderedList",
+          items
+        },
+        startLine,
+        index - 1
+      );
       continue;
     }
 
+    const startLine = index;
     const paragraphLines = [];
     while (
       index < lines.length &&
@@ -540,10 +586,14 @@ function parseMarkdown(markdown) {
     }
 
     if (paragraphLines.length) {
-      blocks.push({
-        type: "paragraph",
-        text: paragraphLines.join(" ")
-      });
+      addBlock(
+        {
+          type: "paragraph",
+          text: paragraphLines.join(" ")
+        },
+        startLine,
+        index - 1
+      );
       continue;
     }
 
@@ -558,7 +608,7 @@ function renderInline(text, theme) {
   const codeTokens = [];
 
   output = output.replace(/`([^`]+)`/g, (_, codeText) => {
-    const token = `__INLINE_CODE_${codeTokens.length}__`;
+    const token = `%%INLINECODE${codeTokens.length}%%`;
     codeTokens.push(
       `<code style="${styleText({
         display: "inline-block",
@@ -592,7 +642,7 @@ function renderInline(text, theme) {
   output = output.replace(/~~([^~]+)~~/g, "<s>$1</s>");
 
   codeTokens.forEach((tokenValue, tokenIndex) => {
-    output = output.replace(`__INLINE_CODE_${tokenIndex}__`, tokenValue);
+    output = output.replace(`%%INLINECODE${tokenIndex}%%`, tokenValue);
   });
 
   return output;
@@ -853,65 +903,87 @@ function renderTable(block, theme, settings) {
   </div>`;
 }
 
+function wrapRenderedBlock(html, block, index) {
+  if (!html) {
+    return "";
+  }
+
+  return `<section data-block-index="${index}" data-source-start="${block.startLine}" data-source-end="${block.endLine}" style="${styleText({
+    margin: "0",
+    padding: "0"
+  })}">${html}</section>`;
+}
+
 function renderArticle(blocks, theme, settings) {
   let leadPending = true;
+  const renderedBlocks = [];
 
   const contentHtml = blocks
     .map((block) => {
+      let blockHtml = "";
+
       if (block.type === "heading") {
         if (block.level === 1) {
           leadPending = true;
         } else {
           leadPending = false;
         }
-        return renderHeading(block, theme);
-      }
-
-      if (block.type === "paragraph") {
-        const paragraphHtml = renderParagraph(block, theme, settings, leadPending);
+        blockHtml = renderHeading(block, theme);
+      } else if (block.type === "paragraph") {
+        blockHtml = renderParagraph(block, theme, settings, leadPending);
         leadPending = false;
-        return paragraphHtml;
+      } else {
+        leadPending = false;
+
+        if (block.type === "blockquote") {
+          blockHtml = renderBlockquote(block, theme, settings);
+        } else if (block.type === "unorderedList" || block.type === "orderedList") {
+          blockHtml = renderList(block, theme, settings);
+        } else if (block.type === "code") {
+          blockHtml = renderCode(block, theme);
+        } else if (block.type === "hr") {
+          blockHtml = renderHr(theme);
+        } else if (block.type === "image") {
+          blockHtml = renderImage(block, theme);
+        } else if (block.type === "table") {
+          blockHtml = renderTable(block, theme, settings);
+        }
       }
 
-      leadPending = false;
+      if (!blockHtml) {
+        return "";
+      }
 
-      if (block.type === "blockquote") {
-        return renderBlockquote(block, theme, settings);
-      }
-      if (block.type === "unorderedList" || block.type === "orderedList") {
-        return renderList(block, theme, settings);
-      }
-      if (block.type === "code") {
-        return renderCode(block, theme);
-      }
-      if (block.type === "hr") {
-        return renderHr(theme);
-      }
-      if (block.type === "image") {
-        return renderImage(block, theme);
-      }
-      if (block.type === "table") {
-        return renderTable(block, theme, settings);
-      }
-      return "";
+      const renderedIndex = renderedBlocks.push(block) - 1;
+      return wrapRenderedBlock(blockHtml, block, renderedIndex);
     })
     .join("");
 
-  return `<section style="${styleText({
-    width: "100%",
-    padding: `${settings.contentPadding}px`,
-    background: theme.palette.surface,
-    color: theme.palette.text
-  })}">
+  return {
+    html: `<section style="${styleText({
+      width: "100%",
+      boxSizing: "border-box",
+      padding: `${settings.contentPadding}px`,
+      background: theme.palette.surface,
+      color: theme.palette.text,
+      overflowX: "hidden"
+    })}">
     <article style="${styleText({
       margin: "0 auto",
       padding: "0",
-      fontFamily: '"Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif',
+      width: "100%",
+      maxWidth: "100%",
+      boxSizing: "border-box",
+      fontFamily: "Helvetica Neue, PingFang SC, Microsoft YaHei, sans-serif",
+      overflowWrap: "break-word",
+      wordBreak: "break-word",
       background: theme.palette.surface
     })}">
       ${contentHtml}
     </article>
-  </section>`;
+  </section>`,
+    renderedBlocks
+  };
 }
 
 function hexToRgba(hex, alpha) {
@@ -932,6 +1004,157 @@ function hexToRgba(hex, alpha) {
 
 function getTheme() {
   return THEMES.find((theme) => theme.id === state.themeId) || THEMES[0];
+}
+
+function ensureScrollMirror() {
+  if (scrollSync.mirror) {
+    return scrollSync.mirror;
+  }
+
+  const mirror = document.createElement("div");
+  mirror.setAttribute("aria-hidden", "true");
+  mirror.style.position = "fixed";
+  mirror.style.left = "-99999px";
+  mirror.style.top = "0";
+  mirror.style.visibility = "hidden";
+  mirror.style.pointerEvents = "none";
+  mirror.style.zIndex = "-1";
+  mirror.style.overflow = "hidden";
+  document.body.appendChild(mirror);
+  scrollSync.mirror = mirror;
+  return mirror;
+}
+
+function syncMirrorStyles() {
+  const mirror = ensureScrollMirror();
+  const computed = window.getComputedStyle(elements.markdownInput);
+  mirror.style.width = `${elements.markdownInput.clientWidth}px`;
+  mirror.style.padding = computed.padding;
+  mirror.style.boxSizing = "border-box";
+  mirror.style.font = computed.font;
+  mirror.style.fontFamily = computed.fontFamily;
+  mirror.style.fontSize = computed.fontSize;
+  mirror.style.fontWeight = computed.fontWeight;
+  mirror.style.lineHeight = computed.lineHeight;
+  mirror.style.letterSpacing = computed.letterSpacing;
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.wordBreak = "break-word";
+  mirror.style.overflowWrap = "break-word";
+}
+
+function buildSourceLineOffsets(markdown) {
+  const mirror = ensureScrollMirror();
+  syncMirrorStyles();
+
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const fragment = document.createDocumentFragment();
+
+  lines.forEach((line, index) => {
+    const lineNode = document.createElement("div");
+    lineNode.style.margin = "0";
+    lineNode.style.padding = "0";
+
+    const marker = document.createElement("span");
+    marker.dataset.lineMarker = String(index);
+    marker.style.display = "inline-block";
+    marker.style.width = "0";
+    marker.style.height = "0";
+    marker.style.verticalAlign = "top";
+
+    lineNode.appendChild(marker);
+    lineNode.appendChild(document.createTextNode(line || "\u200b"));
+    fragment.appendChild(lineNode);
+  });
+
+  mirror.replaceChildren(fragment);
+
+  const markers = Array.from(mirror.querySelectorAll("[data-line-marker]"));
+  return {
+    lineOffsets: markers.map((marker) => marker.parentElement.offsetTop),
+    totalHeight: mirror.scrollHeight
+  };
+}
+
+function updateScrollSyncMap(blocks, markdown) {
+  const previewBlocks = Array.from(elements.previewContent.querySelectorAll("[data-block-index]"));
+
+  if (!blocks.length || !previewBlocks.length) {
+    scrollSync.blockMap = [];
+    return;
+  }
+
+  const { lineOffsets, totalHeight } = buildSourceLineOffsets(markdown);
+  const sourceBaseOffset = lineOffsets[0] ?? 0;
+  const preview = elements.previewContent;
+  const previewHeight = preview.scrollHeight;
+  const previewViewportTop = preview.getBoundingClientRect().top;
+  const previewScrollTop = preview.scrollTop;
+  const getPreviewOffset = (element) =>
+    element
+      ? element.getBoundingClientRect().top - previewViewportTop + previewScrollTop
+      : previewHeight;
+  const previewBaseOffset = getPreviewOffset(previewBlocks[0]);
+
+  scrollSync.blockMap = blocks.map((block, index) => {
+    const rawPreviewStart = getPreviewOffset(previewBlocks[index]);
+    const rawPreviewEnd = previewBlocks[index + 1] ? getPreviewOffset(previewBlocks[index + 1]) : previewHeight;
+    const previewStart = Math.max(0, rawPreviewStart - previewBaseOffset);
+    const previewEnd = Math.max(0, rawPreviewEnd - previewBaseOffset);
+    const sourceStart = Math.max(0, (lineOffsets[block.startLine] ?? 0) - sourceBaseOffset);
+    const sourceEnd = Math.max(0, (lineOffsets[block.endLine + 1] ?? totalHeight) - sourceBaseOffset);
+
+    return {
+      sourceStart,
+      sourceEnd: Math.max(sourceStart + 1, sourceEnd),
+      previewStart,
+      previewEnd: Math.max(previewStart + 1, previewEnd)
+    };
+  });
+}
+
+function syncPreviewScrollToMarkdown() {
+  const preview = elements.previewContent;
+  const textarea = elements.markdownInput;
+  const maxPreviewScroll = Math.max(0, preview.scrollHeight - preview.clientHeight);
+
+  if (!scrollSync.blockMap.length || maxPreviewScroll <= 0) {
+    preview.scrollTop = 0;
+    return;
+  }
+
+  const sourceY = textarea.scrollTop;
+  const activeBlock =
+    scrollSync.blockMap.find((block) => sourceY >= block.sourceStart && sourceY < block.sourceEnd) ||
+    scrollSync.blockMap[scrollSync.blockMap.length - 1];
+
+  const sourceRange = Math.max(1, activeBlock.sourceEnd - activeBlock.sourceStart);
+  const progress = Math.min(1, Math.max(0, (sourceY - activeBlock.sourceStart) / sourceRange));
+  const target = activeBlock.previewStart + (activeBlock.previewEnd - activeBlock.previewStart) * progress;
+
+  preview.scrollTop = Math.min(maxPreviewScroll, Math.max(0, target));
+}
+
+function schedulePreviewScrollSync() {
+  if (scrollSync.syncFrame) {
+    return;
+  }
+
+  scrollSync.syncFrame = requestAnimationFrame(() => {
+    scrollSync.syncFrame = 0;
+    syncPreviewScrollToMarkdown();
+  });
+}
+
+function scheduleScrollSyncRefresh(markdown, blocks) {
+  if (scrollSync.measureFrame) {
+    cancelAnimationFrame(scrollSync.measureFrame);
+  }
+
+  scrollSync.measureFrame = requestAnimationFrame(() => {
+    scrollSync.measureFrame = 0;
+    updateScrollSyncMap(blocks, markdown);
+    syncPreviewScrollToMarkdown();
+  });
 }
 
 function updateControls() {
@@ -956,17 +1179,19 @@ function renderTemplatePicker() {
 }
 
 function renderPreview() {
-  const markdown = elements.markdownInput.value.trim() || DEFAULT_MARKDOWN;
+  const markdown = getActiveMarkdown();
   const theme = getTheme();
   const blocks = parseMarkdown(markdown);
-  const html = renderArticle(blocks, theme, state);
+  const article = renderArticle(blocks, theme, state);
 
   elements.previewContent.style.background = theme.palette.page;
-  elements.previewContent.innerHTML = html;
-  elements.htmlOutput.textContent = html;
+  elements.previewContent.innerHTML = article.html;
+  elements.htmlOutput.textContent = article.html;
   elements.activeTemplateName.textContent = theme.name;
   elements.activeTemplateNote.textContent = theme.note;
+  state.renderedBlocks = article.renderedBlocks;
   renderTemplatePicker();
+  scheduleScrollSyncRefresh(markdown, article.renderedBlocks);
 }
 
 function setStatus(message) {
@@ -1071,6 +1296,7 @@ function downloadHtml() {
 
 function bindEvents() {
   elements.markdownInput.addEventListener("input", renderPreview);
+  elements.markdownInput.addEventListener("scroll", schedulePreviewScrollSync);
 
   elements.fontSize.addEventListener("input", (event) => {
     state.fontSize = Number(event.target.value);
@@ -1121,6 +1347,9 @@ function bindEvents() {
   elements.copyRich.addEventListener("click", copyRichText);
   elements.copyHtml.addEventListener("click", copyHtmlSource);
   elements.downloadHtml.addEventListener("click", downloadHtml);
+  window.addEventListener("resize", () => {
+    scheduleScrollSyncRefresh(getActiveMarkdown(), state.renderedBlocks);
+  });
 }
 
 function init() {

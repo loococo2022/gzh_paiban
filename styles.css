@@ -345,10 +345,11 @@ input[type="range"] {
 }
 
 .preview-content {
-  min-height: 780px;
+  height: 780px;
   border-radius: 24px;
   background: #ffffff;
   overflow: auto;
+  overflow-x: hidden;
 }
 
 .code-drawer {
@@ -443,6 +444,6 @@ input[type="range"] {
   }
 
   .preview-content {
-    min-height: 620px;
+    height: 620px;
   }
 }
