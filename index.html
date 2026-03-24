@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>公众号 Markdown 排版工作台</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%238b4b28'/%3E%3Cpath d='M18 21h28v5H18zm0 9h20v5H18zm0 9h28v5H18z' fill='%23fff7f0'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Markdown -> 公众号富文本</p>
+          <h1>公众号排版工作台</h1>
+          <p class="hero-copy">
+            输入 Markdown，切换模板，实时预览后直接复制到公众号后台使用。
+            所有排版样式都会以内联样式输出，尽量贴近公众号富文本的实际粘贴效果。
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="load-demo" class="secondary-action">载入示例</button>
+          <button id="clear-input" class="ghost-action">清空内容</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="panel editor-panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">输入区</p>
+              <h2>Markdown 内容</h2>
+            </div>
+            <p class="panel-tip">
+              支持标题、段落、粗体、斜体、引用、无序/有序列表、分割线、代码块、表格、图片。
+            </p>
+          </div>
+
+          <textarea
+            id="markdown-input"
+            spellcheck="false"
+            placeholder="把 Markdown 粘贴到这里"
+          ></textarea>
+
+          <div class="control-grid">
+            <label class="control-card" for="font-size">
+              <span>正文字号</span>
+              <strong id="font-size-value">16px</strong>
+              <input id="font-size" type="range" min="14" max="18" step="1" value="16" />
+            </label>
+
+            <label class="control-card" for="line-height">
+              <span>正文行高</span>
+              <strong id="line-height-value">1.9</strong>
+              <input id="line-height" type="range" min="16" max="22" step="1" value="19" />
+            </label>
+
+            <label class="control-card" for="content-padding">
+              <span>容器留白</span>
+              <strong id="content-padding-value">24px</strong>
+              <input
+                id="content-padding"
+                type="range"
+                min="16"
+                max="32"
+                step="2"
+                value="24"
+              />
+            </label>
+          </div>
+
+          <div class="panel-head template-head">
+            <div>
+              <p class="panel-kicker">模板区</p>
+              <h2>10 套公众号模板</h2>
+            </div>
+            <button id="random-template" class="secondary-action">随机换一套</button>
+          </div>
+          <div id="template-list" class="template-list" aria-label="模板列表"></div>
+        </section>
+
+        <section class="panel preview-panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">预览区</p>
+              <h2 id="active-template-name">森系长文</h2>
+            </div>
+            <p id="active-template-note" class="panel-tip"></p>
+          </div>
+
+          <div class="preview-actions">
+            <button id="copy-rich" class="primary-action">复制富文本</button>
+            <button id="copy-html" class="secondary-action">复制 HTML 源码</button>
+            <button id="download-html" class="ghost-action">导出 HTML</button>
+          </div>
+
+          <p id="status-bar" class="status-bar">
+            粘贴到公众号后台时，优先使用“复制富文本”，再到公众号编辑器里直接粘贴。
+          </p>
+
+          <div class="preview-shell-box">
+            <div class="preview-device">
+              <div class="preview-topbar">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <div id="preview-content" class="preview-content"></div>
+            </div>
+          </div>
+
+          <details class="code-drawer">
+            <summary>查看复制出来的 HTML 片段</summary>
+            <pre id="html-output"></pre>
+          </details>
+        </section>
+      </main>
+
+      <footer class="footer-note">
+        <p>建议流程：粘贴 Markdown -> 选模板 -> 检查预览 -> 点击“复制富文本” -> 公众号后台直接粘贴。</p>
+        <p>如果你的公众号后台二次清洗了样式，可切换模板或先复制 HTML 源码做二次调整。</p>
+      </footer>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
