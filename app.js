@@ -1117,6 +1117,7 @@ function updateScrollSyncMap(blocks, markdown) {
 function syncPreviewScrollToMarkdown() {
   const preview = elements.previewContent;
   const textarea = elements.markdownInput;
+  const maxSourceScroll = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
   const maxPreviewScroll = Math.max(0, preview.scrollHeight - preview.clientHeight);
 
   if (!scrollSync.blockMap.length || maxPreviewScroll <= 0) {
@@ -1125,13 +1126,48 @@ function syncPreviewScrollToMarkdown() {
   }
 
   const sourceY = textarea.scrollTop;
-  const activeBlock =
-    scrollSync.blockMap.find((block) => sourceY >= block.sourceStart && sourceY < block.sourceEnd) ||
-    scrollSync.blockMap[scrollSync.blockMap.length - 1];
+  const boundaryThreshold = 1;
 
-  const sourceRange = Math.max(1, activeBlock.sourceEnd - activeBlock.sourceStart);
-  const progress = Math.min(1, Math.max(0, (sourceY - activeBlock.sourceStart) / sourceRange));
-  const target = activeBlock.previewStart + (activeBlock.previewEnd - activeBlock.previewStart) * progress;
+  if (sourceY <= boundaryThreshold) {
+    preview.scrollTop = 0;
+    return;
+  }
+
+  if (sourceY >= maxSourceScroll - boundaryThreshold) {
+    preview.scrollTop = maxPreviewScroll;
+    return;
+  }
+
+  const blocks = scrollSync.blockMap;
+  const firstBlock = blocks[0];
+  const lastBlock = blocks[blocks.length - 1];
+
+  let target = 0;
+
+  if (sourceY <= firstBlock.sourceStart) {
+    target = firstBlock.previewStart;
+  } else if (sourceY >= lastBlock.sourceEnd) {
+    target = lastBlock.previewEnd;
+  } else {
+    for (let index = 0; index < blocks.length; index += 1) {
+      const block = blocks[index];
+      const nextBlock = blocks[index + 1];
+
+      if (sourceY >= block.sourceStart && sourceY < block.sourceEnd) {
+        const sourceRange = Math.max(1, block.sourceEnd - block.sourceStart);
+        const progress = Math.min(1, Math.max(0, (sourceY - block.sourceStart) / sourceRange));
+        target = block.previewStart + (block.previewEnd - block.previewStart) * progress;
+        break;
+      }
+
+      if (nextBlock && sourceY >= block.sourceEnd && sourceY < nextBlock.sourceStart) {
+        const gapRange = Math.max(1, nextBlock.sourceStart - block.sourceEnd);
+        const progress = Math.min(1, Math.max(0, (sourceY - block.sourceEnd) / gapRange));
+        target = block.previewEnd + (nextBlock.previewStart - block.previewEnd) * progress;
+        break;
+      }
+    }
+  }
 
   preview.scrollTop = Math.min(maxPreviewScroll, Math.max(0, target));
 }
@@ -1174,13 +1210,8 @@ function updateControls() {
 function renderTemplatePicker() {
   elements.templateList.innerHTML = THEMES.map(
     (theme) => `<button class="template-card ${theme.id === state.themeId ? "is-active" : ""}" data-theme-id="${theme.id}">
-      <div class="template-card-top">
-        <span class="template-card-swatch" style="background:${theme.swatch}"></span>
-        <div>
-          <h3>${theme.name}</h3>
-          <p>${theme.note}</p>
-        </div>
-      </div>
+      <span class="template-card-swatch" style="background:${theme.swatch}"></span>
+      <span class="template-card-name">${theme.name}</span>
       <span class="template-tag">${theme.tag}</span>
     </button>`
   ).join("");

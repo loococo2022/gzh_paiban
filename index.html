@@ -27,16 +27,56 @@
         </div>
       </header>
 
+      <section class="panel template-toolbar">
+        <div class="template-toolbar-head">
+          <div>
+            <p class="panel-kicker">模板栏</p>
+            <h2>切换排版模板</h2>
+          </div>
+          <button id="random-template" class="secondary-action">随机换一套</button>
+        </div>
+        <div id="template-list" class="template-list" aria-label="模板列表"></div>
+      </section>
+
       <main class="workspace">
         <section class="panel editor-panel">
-          <div class="panel-head">
-            <div>
+          <div class="panel-head editor-head">
+            <div class="editor-head-main">
               <p class="panel-kicker">输入区</p>
               <h2>Markdown 内容</h2>
+              <p class="panel-tip">
+                支持标题、段落、粗体、斜体、引用、无序/有序列表、分割线、代码块、表格、图片。
+              </p>
             </div>
-            <p class="panel-tip">
-              支持标题、段落、粗体、斜体、引用、无序/有序列表、分割线、代码块、表格、图片。
-            </p>
+          </div>
+
+          <div class="editor-toolbar">
+            <div class="control-grid control-grid-compact">
+              <label class="control-card" for="font-size">
+                <span>正文字号</span>
+                <strong id="font-size-value">16px</strong>
+                <input id="font-size" type="range" min="14" max="18" step="1" value="16" />
+              </label>
+
+              <label class="control-card" for="line-height">
+                <span>正文行高</span>
+                <strong id="line-height-value">1.9</strong>
+                <input id="line-height" type="range" min="16" max="22" step="1" value="19" />
+              </label>
+
+              <label class="control-card" for="content-padding">
+                <span>容器留白</span>
+                <strong id="content-padding-value">24px</strong>
+                <input
+                  id="content-padding"
+                  type="range"
+                  min="16"
+                  max="32"
+                  step="2"
+                  value="24"
+                />
+              </label>
+            </div>
           </div>
 
           <textarea
@@ -44,62 +84,28 @@
             spellcheck="false"
             placeholder="把 Markdown 粘贴到这里"
           ></textarea>
-
-          <div class="control-grid">
-            <label class="control-card" for="font-size">
-              <span>正文字号</span>
-              <strong id="font-size-value">16px</strong>
-              <input id="font-size" type="range" min="14" max="18" step="1" value="16" />
-            </label>
-
-            <label class="control-card" for="line-height">
-              <span>正文行高</span>
-              <strong id="line-height-value">1.9</strong>
-              <input id="line-height" type="range" min="16" max="22" step="1" value="19" />
-            </label>
-
-            <label class="control-card" for="content-padding">
-              <span>容器留白</span>
-              <strong id="content-padding-value">24px</strong>
-              <input
-                id="content-padding"
-                type="range"
-                min="16"
-                max="32"
-                step="2"
-                value="24"
-              />
-            </label>
-          </div>
-
-          <div class="panel-head template-head">
-            <div>
-              <p class="panel-kicker">模板区</p>
-              <h2>10 套公众号模板</h2>
-            </div>
-            <button id="random-template" class="secondary-action">随机换一套</button>
-          </div>
-          <div id="template-list" class="template-list" aria-label="模板列表"></div>
         </section>
 
         <section class="panel preview-panel">
-          <div class="panel-head">
-            <div>
+          <div class="panel-head preview-head">
+            <div class="preview-head-main">
               <p class="panel-kicker">预览区</p>
               <h2 id="active-template-name">森系长文</h2>
+              <p id="active-template-note" class="panel-tip"></p>
             </div>
-            <p id="active-template-note" class="panel-tip"></p>
           </div>
 
-          <div class="preview-actions">
-            <button id="copy-rich" class="primary-action">复制富文本</button>
-            <button id="copy-html" class="secondary-action">复制 HTML 源码</button>
-            <button id="download-html" class="ghost-action">导出 HTML</button>
-          </div>
+          <div class="preview-toolbar">
+            <div class="preview-actions">
+              <button id="copy-rich" class="primary-action">复制富文本</button>
+              <button id="copy-html" class="secondary-action">复制 HTML 源码</button>
+              <button id="download-html" class="ghost-action">导出 HTML</button>
+            </div>
 
-          <p id="status-bar" class="status-bar">
-            粘贴到公众号后台时，优先使用“复制富文本”，再到公众号编辑器里直接粘贴。
-          </p>
+            <p id="status-bar" class="status-bar">
+              粘贴到公众号后台时，优先使用“复制富文本”，再到公众号编辑器里直接粘贴。
+            </p>
+          </div>
 
           <div class="preview-shell-box">
             <div class="preview-device">
