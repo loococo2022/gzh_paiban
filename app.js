@@ -349,14 +349,8 @@ const elements = {
   randomTemplate: document.getElementById("random-template"),
   copyRich: document.getElementById("copy-rich"),
   copyHtml: document.getElementById("copy-html"),
-  downloadHtml: document.getElementById("download-html")
-};
-
-const scrollSync = {
-  mirror: null,
-  blockMap: [],
-  measureFrame: 0,
-  syncFrame: 0
+  downloadHtml: document.getElementById("download-html"),
+  scrollTopButton: document.getElementById("scroll-top-button")
 };
 
 function getActiveMarkdown() {
@@ -1008,196 +1002,20 @@ function getTheme() {
   return THEMES.find((theme) => theme.id === state.themeId) || THEMES[0];
 }
 
-function ensureScrollMirror() {
-  if (scrollSync.mirror) {
-    return scrollSync.mirror;
-  }
-
-  const mirror = document.createElement("div");
-  mirror.setAttribute("aria-hidden", "true");
-  mirror.style.position = "fixed";
-  mirror.style.left = "-99999px";
-  mirror.style.top = "0";
-  mirror.style.visibility = "hidden";
-  mirror.style.pointerEvents = "none";
-  mirror.style.zIndex = "-1";
-  mirror.style.overflow = "hidden";
-  document.body.appendChild(mirror);
-  scrollSync.mirror = mirror;
-  return mirror;
-}
-
-function syncMirrorStyles() {
-  const mirror = ensureScrollMirror();
-  const computed = window.getComputedStyle(elements.markdownInput);
-  mirror.style.width = `${elements.markdownInput.clientWidth}px`;
-  mirror.style.padding = computed.padding;
-  mirror.style.boxSizing = "border-box";
-  mirror.style.font = computed.font;
-  mirror.style.fontFamily = computed.fontFamily;
-  mirror.style.fontSize = computed.fontSize;
-  mirror.style.fontWeight = computed.fontWeight;
-  mirror.style.lineHeight = computed.lineHeight;
-  mirror.style.letterSpacing = computed.letterSpacing;
-  mirror.style.whiteSpace = "pre-wrap";
-  mirror.style.wordBreak = "break-word";
-  mirror.style.overflowWrap = "break-word";
-}
-
-function buildSourceLineOffsets(markdown) {
-  const mirror = ensureScrollMirror();
-  syncMirrorStyles();
-
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
-  const fragment = document.createDocumentFragment();
-
-  lines.forEach((line, index) => {
-    const lineNode = document.createElement("div");
-    lineNode.style.margin = "0";
-    lineNode.style.padding = "0";
-
-    const marker = document.createElement("span");
-    marker.dataset.lineMarker = String(index);
-    marker.style.display = "inline-block";
-    marker.style.width = "0";
-    marker.style.height = "0";
-    marker.style.verticalAlign = "top";
-
-    lineNode.appendChild(marker);
-    lineNode.appendChild(document.createTextNode(line || "\u200b"));
-    fragment.appendChild(lineNode);
-  });
-
-  mirror.replaceChildren(fragment);
-
-  const markers = Array.from(mirror.querySelectorAll("[data-line-marker]"));
-  return {
-    lineOffsets: markers.map((marker) => marker.parentElement.offsetTop),
-    totalHeight: mirror.scrollHeight
-  };
-}
-
-function updateScrollSyncMap(blocks, markdown) {
-  const previewBlocks = Array.from(elements.previewContent.querySelectorAll("[data-block-index]"));
-
-  if (!blocks.length || !previewBlocks.length) {
-    scrollSync.blockMap = [];
-    return;
-  }
-
-  const { lineOffsets, totalHeight } = buildSourceLineOffsets(markdown);
-  const sourceBaseOffset = lineOffsets[0] ?? 0;
-  const preview = elements.previewContent;
-  const previewHeight = preview.scrollHeight;
-  const previewViewportTop = preview.getBoundingClientRect().top;
-  const previewScrollTop = preview.scrollTop;
-  const getPreviewOffset = (element) =>
-    element
-      ? element.getBoundingClientRect().top - previewViewportTop + previewScrollTop
-      : previewHeight;
-  const previewBaseOffset = getPreviewOffset(previewBlocks[0]);
-
-  scrollSync.blockMap = blocks.map((block, index) => {
-    const rawPreviewStart = getPreviewOffset(previewBlocks[index]);
-    const rawPreviewEnd = previewBlocks[index + 1] ? getPreviewOffset(previewBlocks[index + 1]) : previewHeight;
-    const previewStart = Math.max(0, rawPreviewStart - previewBaseOffset);
-    const previewEnd = Math.max(0, rawPreviewEnd - previewBaseOffset);
-    const sourceStart = Math.max(0, (lineOffsets[block.startLine] ?? 0) - sourceBaseOffset);
-    const sourceEnd = Math.max(0, (lineOffsets[block.endLine + 1] ?? totalHeight) - sourceBaseOffset);
-
-    return {
-      sourceStart,
-      sourceEnd: Math.max(sourceStart + 1, sourceEnd),
-      previewStart,
-      previewEnd: Math.max(previewStart + 1, previewEnd)
-    };
-  });
-}
-
-function syncPreviewScrollToMarkdown() {
-  const preview = elements.previewContent;
+function autoResizeTextarea() {
   const textarea = elements.markdownInput;
-  const maxSourceScroll = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
-  const maxPreviewScroll = Math.max(0, preview.scrollHeight - preview.clientHeight);
-
-  if (!scrollSync.blockMap.length || maxPreviewScroll <= 0) {
-    preview.scrollTop = 0;
-    return;
-  }
-
-  const sourceY = textarea.scrollTop;
-  const boundaryThreshold = 1;
-
-  if (sourceY <= boundaryThreshold) {
-    preview.scrollTop = 0;
-    return;
-  }
-
-  if (sourceY >= maxSourceScroll - boundaryThreshold) {
-    preview.scrollTop = maxPreviewScroll;
-    return;
-  }
-
-  const blocks = scrollSync.blockMap;
-  const firstBlock = blocks[0];
-  const lastBlock = blocks[blocks.length - 1];
-
-  let target = 0;
-
-  if (sourceY <= firstBlock.sourceStart) {
-    target = firstBlock.previewStart;
-  } else if (sourceY >= lastBlock.sourceEnd) {
-    target = lastBlock.previewEnd;
-  } else {
-    for (let index = 0; index < blocks.length; index += 1) {
-      const block = blocks[index];
-      const nextBlock = blocks[index + 1];
-
-      if (sourceY >= block.sourceStart && sourceY < block.sourceEnd) {
-        const sourceRange = Math.max(1, block.sourceEnd - block.sourceStart);
-        const progress = Math.min(1, Math.max(0, (sourceY - block.sourceStart) / sourceRange));
-        target = block.previewStart + (block.previewEnd - block.previewStart) * progress;
-        break;
-      }
-
-      if (nextBlock && sourceY >= block.sourceEnd && sourceY < nextBlock.sourceStart) {
-        const gapRange = Math.max(1, nextBlock.sourceStart - block.sourceEnd);
-        const progress = Math.min(1, Math.max(0, (sourceY - block.sourceEnd) / gapRange));
-        target = block.previewEnd + (nextBlock.previewStart - block.previewEnd) * progress;
-        break;
-      }
-    }
-  }
-
-  preview.scrollTop = Math.min(maxPreviewScroll, Math.max(0, target));
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
-function schedulePreviewScrollSync() {
-  if (scrollSync.syncFrame) {
-    return;
-  }
-
-  scrollSync.syncFrame = requestAnimationFrame(() => {
-    scrollSync.syncFrame = 0;
-    syncPreviewScrollToMarkdown();
-  });
+function updateScrollTopButton() {
+  elements.scrollTopButton.classList.toggle("is-visible", window.scrollY > 280);
 }
 
-function scheduleScrollSyncRefresh(markdown, blocks) {
-  scheduleScrollSyncRefreshWithMode(markdown, blocks, false);
-}
-
-function scheduleScrollSyncRefreshWithMode(markdown, blocks, shouldSyncPosition) {
-  if (scrollSync.measureFrame) {
-    cancelAnimationFrame(scrollSync.measureFrame);
-  }
-
-  scrollSync.measureFrame = requestAnimationFrame(() => {
-    scrollSync.measureFrame = 0;
-    updateScrollSyncMap(blocks, markdown);
-    if (shouldSyncPosition) {
-      syncPreviewScrollToMarkdown();
-    }
+function scrollToPageTop() {
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
   });
 }
 
@@ -1222,17 +1040,16 @@ function renderPreview() {
   const theme = getTheme();
   const blocks = parseMarkdown(markdown);
   const article = renderArticle(blocks, theme, state);
-  const previousPreviewScrollTop = elements.previewContent.scrollTop;
 
+  autoResizeTextarea();
   elements.previewContent.style.background = theme.palette.page;
   elements.previewContent.innerHTML = article.html;
-  elements.previewContent.scrollTop = previousPreviewScrollTop;
   elements.htmlOutput.textContent = article.html;
   elements.activeTemplateName.textContent = theme.name;
   elements.activeTemplateNote.textContent = theme.note;
   state.renderedBlocks = article.renderedBlocks;
   renderTemplatePicker();
-  scheduleScrollSyncRefresh(markdown, article.renderedBlocks);
+  updateScrollTopButton();
 }
 
 function setStatus(message) {
@@ -1337,7 +1154,6 @@ function downloadHtml() {
 
 function bindEvents() {
   elements.markdownInput.addEventListener("input", renderPreview);
-  elements.markdownInput.addEventListener("scroll", schedulePreviewScrollSync);
 
   elements.fontSize.addEventListener("input", (event) => {
     state.fontSize = Number(event.target.value);
@@ -1388,9 +1204,9 @@ function bindEvents() {
   elements.copyRich.addEventListener("click", copyRichText);
   elements.copyHtml.addEventListener("click", copyHtmlSource);
   elements.downloadHtml.addEventListener("click", downloadHtml);
-  window.addEventListener("resize", () => {
-    scheduleScrollSyncRefreshWithMode(getActiveMarkdown(), state.renderedBlocks, true);
-  });
+  elements.scrollTopButton.addEventListener("click", scrollToPageTop);
+  window.addEventListener("scroll", updateScrollTopButton, { passive: true });
+  window.addEventListener("resize", autoResizeTextarea);
 }
 
 function init() {
